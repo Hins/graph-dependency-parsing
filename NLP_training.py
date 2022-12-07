@@ -14,12 +14,33 @@ from mst import mst
 
 
 def prepare_data(file, training=True):
-
+    '''
+    data_string = ""
+    with open(file, 'r') as f:
+        train_id = 1
+        train_idx = 1
+        for line in f:
+            if line[0] == "#":
+                continue
+            if line.count("\t") == 0:
+                train_id += 1
+                train_idx = 1
+                continue
+            elements = line.split("\t")
+            data_string += str(train_id) + "," + str(train_idx) + "," + elements[1] + "," + elements[3] + "," \
+                                                                                                          "" + \
+                           elements[6] + "," + elements[7] + "\n"
+            train_idx += 1
+    data_string = data_string[:len(data_string) - 1]
+    data_list = []
+    for element in data_string.split("\n"):
+        data_list.append(element.split(','))
+    '''
     data_string = (conll_df(file, file_index=False)[['w', 'x', 'g', 'f']]).to_csv()
-
+    print(data_string)
     data_list = list(csv.reader(data_string.split('\n')))[:-1]
-
     data_list.pop(0)
+
     properties = {"idx" : [], "words": [], "tags": [], "dep_heads":[], "labels":[]}
     for j in range(len(data_list)):
         tokens = data_list[j]
@@ -68,16 +89,11 @@ def embed_sentence(sentence, language):
     return sentence_tensor
 
 def calc_gold_arcs(sentence):
-
     heads = []
-
     for line in sentence:
         heads.append(int(line[2]))
-
     target = torch.from_numpy(np.array([heads]))
-
     return target
-
 
 class LSTMParser(nn.Module):
     """
@@ -154,9 +170,7 @@ class LSTMParser(nn.Module):
 
 
 def calc_gold_labels(sentence):
-
     labels = []
-
     with open('lang_{}/embeddings/label2i.pickle'.format(language), 'rb') as file:
         label2i = pickle.load(file)
 
@@ -164,9 +178,7 @@ def calc_gold_labels(sentence):
         label = line[3]
         if ':' in label: label = label.split(':')[0]
         labels.append(label2i[label])
-
     target = torch.from_numpy(np.array([labels]))
-
     return target
 
 def train_step(model, input_sent, gold_arcs, gold_labels, arc_loss_criterion, label_loss_criterion, optimizer):
@@ -203,14 +215,11 @@ def train(filename, model, language, epochs, verbose = 2):
     label_losses = []
 
     for epoch in range(epochs):
-
         epoch_arc_loss = 0
         epoch_label_loss = 0
-
         if verbose > 0: print('\n***** Epoch {}:'.format(epoch))
 
         for sentence in sentences:
-
             sentence_var = Variable(embed_sentence(sentence, language), requires_grad=False)
 
             gold_arcs = Variable(calc_gold_arcs(sentence))
@@ -226,8 +235,8 @@ def train(filename, model, language, epochs, verbose = 2):
             del arc_matrix
 
         torch.save(model.state_dict(), "lang_{}/models/{}_e{}.pth".format(language, modelname, epoch))
-        arc_losses.append(epoch_arc_loss.data.numpy()[0] / len(sentences))
-        label_losses.append(epoch_label_loss.data.numpy()[0] / len(sentences))
+        arc_losses.append(epoch_arc_loss.data.numpy() / len(sentences))
+        label_losses.append(epoch_label_loss.data.numpy() / len(sentences))
 
 
         if verbose > 0: print('combined loss {} \n*****'.format(arc_losses[-1] + label_losses[-1]))
@@ -262,6 +271,7 @@ optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
 
 language = sys.argv[4]
 file = 'lang_{}/gold/{}-ud-train.conllu'.format(language, language)
+#file = sys.argv[7]
 
 if __name__ == "__main__":
 
