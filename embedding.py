@@ -2,12 +2,14 @@ import numpy as np
 
 word_embeddings = {
     'en': None,
-    'de': None
+    'de': None,
+    'zh': None
 }
 
 tag_embeddings = {
     'en': None,
-    'de': None
+    'de': None,
+    'zh': None
 }
 
 def concatenate(word_vec, tag_vec):

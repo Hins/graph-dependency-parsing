@@ -6,40 +6,48 @@ import embedding
 import torch
 from torch.autograd import Variable
 import torch.nn as nn
-import csv
 import pickle
-from conll_df import conll_df
-
 from mst import mst
 
+def transform_to_conll_format(data_list):
+    properties = {"idx": [], "words": [], "tags": [], "dep_heads": [], "labels": []}
+    for j in range(len(data_list)):
+        tokens = data_list[j]
+        properties['idx'].append(int(float(tokens[1])))
+        properties['words'].append(tokens[2])
+        properties['tags'].append(tokens[3].lower())
+        properties['dep_heads'].append(tokens[4])
+        properties['labels'].append(tokens[5].lower())
+
+    # make a list of numpy 2D arrays from all the sentences
+    sentences = []
+    sent_idx = -1
+    for i in range(len(properties['words'])):
+        if (properties['idx'][i] == 1):
+            sent_idx += 1
+            sentences.append(np.array(['<root>', '<root>', 0, 'root']))
+            sentences[sent_idx] = np.vstack((sentences[sent_idx], np.array(
+                [properties['words'][i], properties['tags'][i], properties['dep_heads'][i], properties['labels'][i]])))
+        else:
+            sentences[sent_idx] = np.vstack((sentences[sent_idx], np.array(
+                [properties['words'][i], properties['tags'][i], properties['dep_heads'][i], properties['labels'][i]])))
+    return sentences
 
 def prepare_data(file, training=True):
-    '''
-    data_string = ""
-    with open(file, 'r') as f:
-        train_id = 1
-        train_idx = 1
-        for line in f:
-            if line[0] == "#":
-                continue
-            if line.count("\t") == 0:
-                train_id += 1
-                train_idx = 1
-                continue
-            elements = line.split("\t")
-            data_string += str(train_id) + "," + str(train_idx) + "," + elements[1] + "," + elements[3] + "," \
-                                                                                                          "" + \
-                           elements[6] + "," + elements[7] + "\n"
-            train_idx += 1
-    data_string = data_string[:len(data_string) - 1]
     data_list = []
-    for element in data_string.split("\n"):
-        data_list.append(element.split(','))
-    '''
-    data_string = (conll_df(file, file_index=False)[['w', 'x', 'g', 'f']]).to_csv()
-    print(data_string)
-    data_list = list(csv.reader(data_string.split('\n')))[:-1]
-    data_list.pop(0)
+    with open(file, 'r') as f:
+        for line in f:
+            elements = line.split("\t")
+            sample = []
+            if len(elements) < 10:
+                continue
+            sample.append(elements[0])
+            sample.append(elements[0])
+            sample.append(elements[1])
+            sample.append(elements[3])
+            sample.append(elements[6])
+            sample.append(elements[7])
+            data_list.append(sample)
 
     properties = {"idx" : [], "words": [], "tags": [], "dep_heads":[], "labels":[]}
     for j in range(len(data_list)):
@@ -69,19 +77,24 @@ def prepare_data(file, training=True):
 def embed_sentence(sentence, language):
 
     batch_size = 1
-    in_size = 125
+    in_size = 100
 
     word_embeddings = embedding.get_word_embeddings(language)
-    tag_embeddings = embedding.get_tag_embeddings(language)
+    #tag_embeddings = embedding.get_tag_embeddings(language)
 
-    sentence_array = np.zeros((len(sentence), 125))
+    sentence_array = np.zeros((len(sentence), 100))
     for i in range(sentence.shape[0]):
 
         if not sentence[i, 0] in word_embeddings:
-            embeddable = '<unk>'
-        else: embeddable = sentence[i,0].lower()
+            #embeddable = '<unk>'
+            embeddable = '<root>'
+            #print(sentence[i,0])
+            #print("not in embedding dict")
+        else:
+            embeddable = sentence[i,0].lower()
 
-        sentence_array[i, :] = embedding.concatenate(word_embeddings[embeddable], tag_embeddings[sentence[i, 1]])
+        #sentence_array[i, :] = embedding.concatenate(word_embeddings[embeddable], tag_embeddings[sentence[i, 1]])
+        sentence_array[i, :] = word_embeddings[embeddable]
 
     sentence_tensor = torch.from_numpy(sentence_array.astype(np.float32))
     sentence_tensor = sentence_tensor.view(len(sentence), batch_size, in_size)
@@ -157,6 +170,8 @@ class LSTMParser(nn.Module):
         prediction = softmax(scores_matrix)
 
         prediction = prediction.data.numpy()
+        #print("prediction is ")
+        #print(scores_matrix.shape)
 
         # we represent the final parse as a words*words mtx, where the root is indicated as the diagonal element
         return mst(prediction)
@@ -171,12 +186,18 @@ class LSTMParser(nn.Module):
 
 def calc_gold_labels(sentence):
     labels = []
-    with open('lang_{}/embeddings/label2i.pickle'.format(language), 'rb') as file:
+    with open('lang_{}/embeddings/label2i.pickle'.format("zh"), 'rb') as file:
         label2i = pickle.load(file)
 
     for line in sentence:
         label = line[3]
         if ':' in label: label = label.split(':')[0]
+        if label == "dobj": label = "obj"
+        if label == "neg": label = "advmod"
+        if label == "etc": label = "advmod"
+        if label == "auxpass": label = "case"
+        if label == "name": label = "nmod:poss"
+        if label == "nsubjpass": label = "nsubj:pass"
         labels.append(label2i[label])
     target = torch.from_numpy(np.array([labels]))
     return target
@@ -230,11 +251,11 @@ def train(filename, model, language, epochs, verbose = 2):
 
             if verbose > 2: print('loss {0:.4f} for "'.format(loss.data.numpy()[0]) + ' '.join(word for word in sentence[:,0]) + '"')
 
-            if verbose > 1: visualise_sentence(sentence, arc_matrix, epoch, modelname, language)
+            if verbose > 1: visualise_sentence(sentence, arc_matrix, epoch, "model1", language)
 
             del arc_matrix
 
-        torch.save(model.state_dict(), "lang_{}/models/{}_e{}.pth".format(language, modelname, epoch))
+        torch.save(model.state_dict(), "lang_{}/models/{}_e{}.pth".format(language, "model1", epoch))
         arc_losses.append(epoch_arc_loss.data.numpy() / len(sentences))
         label_losses.append(epoch_label_loss.data.numpy() / len(sentences))
 
@@ -244,31 +265,31 @@ def train(filename, model, language, epochs, verbose = 2):
         pyplot.plot(range(len(arc_losses)), arc_losses, label='arc loss')
         pyplot.plot(range(len(label_losses)), label_losses, label='label loss')
         pyplot.legend(loc='upper right')
-        pyplot.savefig('lang_{}/models/{}_loss.pdf'.format(language, modelname))
+        pyplot.savefig('lang_{}/models/{}_loss.pdf'.format(language, "model1"))
         print('arc loss: ', arc_losses[-1])
         print('label loss: ', label_losses[-1])
 
 
 # Hyperparameters
-lstm_in_size = 125
+lstm_in_size = 100
 lstm_h_size = 125
 lstm_num_layers = 1
 
 MLP_in = 500
 
-MLP_score_hidden = int(sys.argv[1])
+MLP_score_hidden = 25
 MLP_score_out = 1
 
-MLP_label_hidden = int(sys.argv[3])
+MLP_label_hidden = 50
 MLP_label_out = 50
 
-learning_rate = float(sys.argv[2])
+learning_rate = 0.0001
 arc_loss_criterion = nn.CrossEntropyLoss()
 label_loss_criterion = nn.CrossEntropyLoss()
 model = LSTMParser()
 optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
 
-
+'''
 language = sys.argv[4]
 file = 'lang_{}/gold/{}-ud-train.conllu'.format(language, language)
 #file = sys.argv[7]
@@ -279,3 +300,4 @@ if __name__ == "__main__":
     modelname = sys.argv[6]
 
     train(file, model, language, epochs)
+'''

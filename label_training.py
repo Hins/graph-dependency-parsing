@@ -39,7 +39,7 @@ def calc_gold_labels(sentence):
 
     labels = []
 
-    with open('lang_en/embeddings/label2i.pickle', 'rb') as file:
+    with open('lang_zh/embeddings/label2i.pickle', 'rb') as file:
         label2i = pickle.load(file)
 
     for line in sentence:
@@ -99,7 +99,7 @@ def train(filename, language, model, biLSTMModel, verbose = 1):
         pyplot.savefig('lang_{}/models/{}_loss.pdf'.format(language, sys.argv[4]))
 
 
-language = 'en'
+language = 'zh'
 filename = 'lang_{}/gold/{}-ud-train.conllu'.format(language, language)
 
 paser_model = LSTMParser()
